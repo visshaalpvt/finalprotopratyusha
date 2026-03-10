@@ -24,17 +24,40 @@ export function useWebRTC(roomId, isTeacher, userName, isJoined) {
     socketRef.current = socket;
 
     socket.on('connect', () => {
-      // Get local camera first
-      navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-        .then(stream => {
-          setLocalStream(stream);
-          socket.data = { name: userName, role: isTeacher ? 'admin' : 'student' };
-          socket.emit('join-video-room', { roomId, isTeacher });
-        })
-        .catch(err => {
-          console.error("Failed to get local stream", err);
-          alert("Could not access camera/microphone.");
-        });
+      if (isTeacher) {
+        // Teacher joins immediately
+        navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+          .then(stream => {
+            setLocalStream(stream);
+            socket.data = { name: userName, role: 'admin' };
+            socket.emit('join-video-room', { roomId, isTeacher });
+          })
+          .catch(err => {
+            console.error("Failed to get local stream", err);
+            alert("Could not access camera/microphone.");
+          });
+      } else {
+        // Student requests to join and waits in waiting room
+        socket.data = { name: userName, role: 'student' };
+        socket.emit('request-join-room', { roomId, userName });
+      }
+    });
+
+    socket.on('join-response-result', ({ status }) => {
+      if (status === 'accepted') {
+        navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+          .then(stream => {
+            setLocalStream(stream);
+            socket.emit('join-video-room', { roomId, isTeacher });
+          })
+          .catch(err => {
+            console.error("Failed to get local stream", err);
+            alert("Could not access camera/microphone.");
+          });
+      } else {
+        alert('Your request to join was declined by the teacher.');
+        window.location.href = '/student'; // Kick back to dashboard
+      }
     });
 
     socket.on('user-connected', ({ userId, isTeacher: peerIsTeacher, name: peerName }) => {

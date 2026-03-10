@@ -10,8 +10,9 @@ import SignLanguageViewer from './SignLanguageViewer';
 export default function LiveClassroom() {
   const [inLobby, setInLobby] = useState(true);
   const [roomId, setRoomId] = useState('');
-  const [userName, setUserName] = useState('');
-  const [role, setRole] = useState('student');
+  const [userName, setUserName] = useState(localStorage.getItem('userRole') === 'teacher' ? 'Teacher Admin' : localStorage.getItem('userRole') === 'student' ? 'Student User' : '');
+  const [role, setRole] = useState(localStorage.getItem('userRole') || 'student');
+  const [isWaiting, setIsWaiting] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
 
   // Waiting Room / Join Requests (Teacher-side)
@@ -57,12 +58,21 @@ export default function LiveClassroom() {
     };
   }, [socket]);
 
-  // Load from URL ?room=XYZ
+  // Load from URL ?room=XYZ and generate initial room codes
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get('room');
-    if (roomParam) setRoomId(roomParam);
-  }, []);
+    if (roomParam) {
+      setRoomId(roomParam);
+      // If someone opens a link, they are most likely joining as a student
+      if (localStorage.getItem('userRole') !== 'teacher') {
+        setRole('student');
+      }
+    } else if (role === 'teacher' && !roomId) {
+      // Auto-generate code for host
+      setRoomId('CLASS' + Math.floor(1000 + Math.random() * 9000));
+    }
+  }, [role]);
 
   const handleCopyInvite = () => {
     const inviteUrl = `${window.location.origin}/classroom?room=${roomId}`;
@@ -96,16 +106,25 @@ export default function LiveClassroom() {
           </div>
 
           <div className="space-y-5">
-            <div>
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest pl-1">I am joining as...</label>
-              <select
-                className="select-field mt-1 mb-2 font-semibold"
-                value={role} onChange={(e) => setRole(e.target.value)}
-              >
-                <option value="teacher">👨‍🏫 Teacher (Host)</option>
-                <option value="student">🎓 Student</option>
-              </select>
-            </div>
+            {role === 'teacher' ? (
+              <div className="p-4 bg-indigo-500/10 border border-indigo-500/30 rounded-xl text-center">
+                <p className="text-sm font-bold text-indigo-400 uppercase tracking-widest mb-1">Host Session ID</p>
+                <p className="text-3xl font-mono font-black text-white">{roomId || '...'}</p>
+                <p className="text-xs text-slate-400 mt-2">Share this code with your students</p>
+              </div>
+            ) : (
+              <div>
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest pl-1">Classroom ID to Join</label>
+                <input
+                  type="text"
+                  value={roomId}
+                  onChange={(e) => setRoomId(e.target.value)}
+                  placeholder="e.g. CLASS1234"
+                  className="input-field mt-1 font-mono tracking-wider font-bold"
+                  readOnly={!!new URLSearchParams(window.location.search).get('room')}
+                />
+              </div>
+            )}
 
             <div>
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest pl-1">Your Name</label>
@@ -118,23 +137,17 @@ export default function LiveClassroom() {
               />
             </div>
 
-            <div>
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest pl-1">Classroom ID</label>
-              <input
-                type="text"
-                value={roomId}
-                onChange={(e) => setRoomId(e.target.value)}
-                placeholder="e.g. CS101"
-                className="input-field mt-1 font-mono tracking-wider font-bold"
-              />
-            </div>
-
             <button
-              onClick={() => setInLobby(false)}
+              onClick={() => {
+                if (role === 'student') setIsWaiting(true);
+                setInLobby(false);
+              }}
               disabled={!roomId || !userName}
-              className="btn-primary w-full py-4 text-lg mt-4 bg-indigo-600 hover:bg-indigo-500 shadow-indigo-500/25"
+              className={`btn-primary w-full py-4 text-lg mt-4 shadow-xl transition-all ${
+                role === 'teacher' ? 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/30' : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/30'
+              }`}
             >
-              🚀 Join Lecture
+              {role === 'teacher' ? '🚀 Start Broadcast' : '🚪 Request to Join'}
             </button>
           </div>
         </div>
@@ -148,6 +161,20 @@ export default function LiveClassroom() {
 
   const mainStream = amITeacher ? localStream : (teacherPeer?.stream || null);
   const students = amITeacher ? remotePeers : remotePeers.filter(p => !p.isTeacher);
+
+  // 1.5 WAITING ROOM (Student waiting for approval AFTER lobby)
+  if (!amITeacher && isWaiting && localStream === null) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-4rem)] bg-slate-900 border-x border-slate-800 text-white p-6 relative overflow-hidden">
+        <div className="absolute inset-0 bg-mesh opacity-20 pointer-events-none mix-blend-screen" />
+        <div className="glass-panel text-center max-w-sm p-8 space-y-4 animate-fade-in relative z-10 border-amber-500/30">
+          <div className="w-16 h-16 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-6" />
+          <h2 className="text-2xl font-black">Waiting Room</h2>
+          <p className="text-slate-300 text-sm">Waiting for the teacher to accept your request to join classroom <span className="font-mono text-amber-400 font-bold">{roomId}</span>...</p>
+        </div>
+      </div>
+    );
+  }
 
   // 2️⃣ ROOM VIEW
   return (
