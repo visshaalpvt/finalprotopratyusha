@@ -117,6 +117,17 @@ export function useWebRTC(roomId, isTeacher, userName, isJoined) {
         iceCandidateQueue.current[data.senderId].push(data.candidate);
       }
     });
+
+    socket.on('room-users', (users) => {
+       // Only students need to initiate connections to existing users (like the teacher)
+       if (!isTeacher) {
+           users.forEach(user => {
+               if (user.userId !== socket.id) {
+                   createPeer(user.userId, true, user.isTeacher, user.name);
+               }
+           });
+       }
+    });
     
     // Handle user leaving
     socket.on('user-disconnected', (userId) => {

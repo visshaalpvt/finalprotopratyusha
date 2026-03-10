@@ -114,6 +114,23 @@ io.on('connection', (socket) => {
       isTeacher,
       name: socket.data?.name || (isTeacher ? 'Teacher' : 'Student')
     });
+
+    // Send room users' info to the new user so they can initiate connections
+    const clients = io.sockets.adapter.rooms.get(roomId);
+    const usersInRoom = [];
+    if (clients) {
+        for (const clientId of clients) {
+            const clientSocket = io.sockets.sockets.get(clientId);
+            if (clientSocket) {
+                usersInRoom.push({
+                    userId: clientId,
+                    isTeacher: clientSocket.data?.role === 'admin',
+                    name: clientSocket.data?.name || (clientSocket.id === socket.id ? userName : 'User')
+                });
+            }
+        }
+    }
+    socket.emit('room-users', usersInRoom);
   });
 
   socket.on('request-join-room', ({ roomId, userName }) => {
