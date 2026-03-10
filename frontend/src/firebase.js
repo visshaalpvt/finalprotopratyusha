@@ -10,7 +10,7 @@ import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAxE2IXhowciyE4udO0fXfylNWGSnBq_Kk",
-  authDomain: "inclusive-classroom-ea3ce.firebaseapp.com",
+  authDomain: "inclusive-classroom-ea3ce.web.app",
   projectId: "inclusive-classroom-ea3ce",
   storageBucket: "inclusive-classroom-ea3ce.firebasestorage.app",
   messagingSenderId: "247352475782",
