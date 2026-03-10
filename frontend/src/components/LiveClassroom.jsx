@@ -57,11 +57,13 @@ export default function LiveClassroom() {
     socket.on('transcript-broadcast', handleTranscript);
     socket.on('transcript-history', handleHistory);
     socket.on('join-request-received', handleJoinReq);
+    socket.on('join-approved', () => setIsWaiting(false));
 
     return () => {
       socket.off('transcript-broadcast', handleTranscript);
       socket.off('transcript-history', handleHistory);
       socket.off('join-request-received', handleJoinReq);
+      socket.off('join-approved');
     };
   }, [socket]);
 

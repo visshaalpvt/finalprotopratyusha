@@ -47,7 +47,18 @@ export function useWebRTC(roomId, isTeacher, userName, isJoined) {
 
     socket.on('join-approved', ({ roomId: approvedRoomId }) => {
       console.log(`[Approve] Joined room ${approvedRoomId}`);
-      socket.emit('join-video-room', { roomId: approvedRoomId, isTeacher: false });
+      
+      // Get local stream for student too, so they can be seen
+      navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+        .then(stream => {
+          setLocalStream(stream);
+          socket.emit('join-video-room', { roomId: approvedRoomId, isTeacher: false });
+        })
+        .catch(err => {
+          console.error("Failed to get local stream", err);
+          // Still join even if camera fails, just as observer
+          socket.emit('join-video-room', { roomId: approvedRoomId, isTeacher: false });
+        });
     });
 
     socket.on('join-rejected', () => {
