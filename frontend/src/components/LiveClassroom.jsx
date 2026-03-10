@@ -1,17 +1,16 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from './AuthContext';
 import { useWebRTC } from '../hooks/useWebRTC';
 import { VideoRenderer } from './VideoRenderer';
 import TranscriptPanel from './TranscriptPanel';
 import SignLanguageViewer from './SignLanguageViewer';
 
-// Optional Accessibility components from existing app
-// For simplicity, we'll embed the core ones here.
-
 export default function LiveClassroom() {
+  const { user } = useAuth();
   const [inLobby, setInLobby] = useState(true);
   const [roomId, setRoomId] = useState('');
-  const [userName, setUserName] = useState(localStorage.getItem('userRole') === 'teacher' ? 'Teacher Admin' : localStorage.getItem('userRole') === 'student' ? 'Student User' : '');
-  const [role, setRole] = useState(localStorage.getItem('userRole') || 'student');
+  const [userName, setUserName] = useState(user?.displayName || '');
+  const [role, setRole] = useState(user?.role || 'student');
   const [isWaiting, setIsWaiting] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
 
@@ -62,17 +61,14 @@ export default function LiveClassroom() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get('room');
+    
     if (roomParam) {
       setRoomId(roomParam);
-      // If someone opens a link, they are most likely joining as a student
-      if (localStorage.getItem('userRole') !== 'teacher') {
-        setRole('student');
-      }
     } else if (role === 'teacher' && !roomId) {
       // Auto-generate code for host
       setRoomId('CLASS' + Math.floor(1000 + Math.random() * 9000));
     }
-  }, [role]);
+  }, [role, roomId]);
 
   const handleCopyInvite = () => {
     const inviteUrl = `${window.location.origin}/classroom?room=${roomId}`;
@@ -105,50 +101,75 @@ export default function LiveClassroom() {
             <p className="text-slate-400 mt-2 text-sm">Create or join an interactive learning session.</p>
           </div>
 
-          <div className="space-y-5">
+          <div className="space-y-6">
             {role === 'teacher' ? (
-              <div className="p-4 bg-indigo-500/10 border border-indigo-500/30 rounded-xl text-center">
-                <p className="text-sm font-bold text-indigo-400 uppercase tracking-widest mb-1">Host Session ID</p>
-                <p className="text-3xl font-mono font-black text-white">{roomId || '...'}</p>
-                <p className="text-xs text-slate-400 mt-2">Share this code with your students</p>
+              /* TEACHER LOBBY UI */
+              <div className="space-y-6">
+                <div className="p-6 bg-indigo-500/10 border border-indigo-500/30 rounded-2xl text-center shadow-inner">
+                  <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-2">Host Session ID</p>
+                  <p className="text-4xl font-mono font-black text-white">{roomId || '...'}</p>
+                  <p className="text-[10px] text-slate-500 mt-3 font-medium uppercase tracking-tighter">Share this code with your students</p>
+                </div>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest pl-1">Your Display Name</label>
+                    <input
+                      type="text"
+                      value={userName}
+                      onChange={(e) => setUserName(e.target.value)}
+                      placeholder="e.g. Prof. Smith"
+                      className="input-field mt-1 font-semibold"
+                    />
+                  </div>
+
+                  <button
+                    onClick={() => setInLobby(false)}
+                    disabled={!roomId || !userName}
+                    className="btn-primary w-full py-4 text-lg bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/30 font-black tracking-tight"
+                  >
+                    🚀 Start Broadcast
+                  </button>
+                </div>
               </div>
             ) : (
-              <div>
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest pl-1">Classroom ID to Join</label>
-                <input
-                  type="text"
-                  value={roomId}
-                  onChange={(e) => setRoomId(e.target.value)}
-                  placeholder="e.g. CLASS1234"
-                  className="input-field mt-1 font-mono tracking-wider font-bold"
-                  readOnly={!!new URLSearchParams(window.location.search).get('room')}
-                />
+              /* STUDENT LOBBY UI */
+              <div className="space-y-6">
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest pl-1">Classroom ID to Join</label>
+                  <input
+                    type="text"
+                    value={roomId}
+                    onChange={(e) => setRoomId(e.target.value)}
+                    placeholder="e.g. CLASS1234"
+                    className="input-field mt-1 font-mono tracking-wider font-bold text-indigo-400"
+                    readOnly={!!new URLSearchParams(window.location.search).get('room')}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest pl-1">Your Full Name</label>
+                  <input
+                    type="text"
+                    value={userName}
+                    onChange={(e) => setUserName(e.target.value)}
+                    placeholder="e.g. Rahul Kumar"
+                    className="input-field mt-1 font-semibold"
+                  />
+                </div>
+
+                <button
+                  onClick={() => {
+                    setIsWaiting(true);
+                    setInLobby(false);
+                  }}
+                  disabled={!roomId || !userName}
+                  className="btn-primary w-full py-4 text-lg bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/25 font-black tracking-tight"
+                >
+                  🚪 Join Classroom
+                </button>
               </div>
             )}
-
-            <div>
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest pl-1">Your Name</label>
-              <input
-                type="text"
-                value={userName}
-                onChange={(e) => setUserName(e.target.value)}
-                placeholder="e.g. John Doe"
-                className="input-field mt-1 font-medium"
-              />
-            </div>
-
-            <button
-              onClick={() => {
-                if (role === 'student') setIsWaiting(true);
-                setInLobby(false);
-              }}
-              disabled={!roomId || !userName}
-              className={`btn-primary w-full py-4 text-lg mt-4 shadow-xl transition-all ${
-                role === 'teacher' ? 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/30' : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/30'
-              }`}
-            >
-              {role === 'teacher' ? '🚀 Start Broadcast' : '🚪 Request to Join'}
-            </button>
           </div>
         </div>
       </div>

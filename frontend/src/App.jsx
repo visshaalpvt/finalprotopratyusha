@@ -147,7 +147,7 @@ export default function App() {
     return <LandingPage />;
   }
 
-  const userRole = localStorage.getItem('userRole') || 'student';
+  const userRole = user?.role || 'student';
   const defaultPath = userRole === 'teacher' ? '/admin' : '/student';
 
   // Logged in — show the full app
