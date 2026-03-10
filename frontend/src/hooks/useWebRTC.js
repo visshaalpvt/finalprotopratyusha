@@ -204,5 +204,21 @@ export function useWebRTC(roomId, isTeacher, userName, isJoined) {
     return peer;
   };
 
-  return { localStream, remotePeers, socket: socketRef.current };
+  const toggleMic = () => {
+    if (localStream) {
+      localStream.getAudioTracks().forEach(track => {
+        track.enabled = !track.enabled;
+      });
+    }
+  };
+
+  const toggleCamera = () => {
+    if (localStream) {
+      localStream.getVideoTracks().forEach(track => {
+        track.enabled = !track.enabled;
+      });
+    }
+  };
+
+  return { localStream, remotePeers, socket: socketRef.current, toggleMic, toggleCamera };
 }

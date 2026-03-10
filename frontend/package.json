@@ -13,13 +13,17 @@
     "@mediapipe/drawing_utils": "^0.3.1675466124",
     "@mediapipe/hands": "^0.4.1675469240",
     "@tensorflow/tfjs": "^4.22.0",
+    "clsx": "^2.1.1",
     "firebase": "^12.10.0",
+    "framer-motion": "^12.35.2",
     "jspdf": "^4.2.0",
+    "lucide-react": "^0.577.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.21.0",
     "react-webcam": "^7.2.0",
-    "socket.io-client": "^4.7.4"
+    "socket.io-client": "^4.7.4",
+    "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",

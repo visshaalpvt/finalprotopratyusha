@@ -30,7 +30,7 @@ export default function LandingPage() {
       <nav className="sticky top-0 z-50 bg-slate-950/80 backdrop-blur-md border-b border-white/5">
         <div className="flex items-center justify-between px-8 py-4 max-w-7xl mx-auto">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xl shadow-lg shadow-indigo-500/20">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xl shadow-lg shadow-indigo-500/20">
               🎓
             </div>
             <span className="text-xl font-bold text-white tracking-tight">
@@ -45,13 +45,13 @@ export default function LandingPage() {
           </div>
 
           <div className="flex items-center gap-4">
-            <button 
+            <button
               onClick={() => handleLogin('student')}
               className="hidden sm:block text-sm font-bold text-slate-300 hover:text-white transition-colors"
             >
               Student Login
             </button>
-            <button 
+            <button
               onClick={() => handleLogin('teacher')}
               disabled={isLoading !== ''}
               className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-xl shadow-lg shadow-indigo-500/25 transition-all hover:-translate-y-0.5"
@@ -87,14 +87,14 @@ export default function LandingPage() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-6">
-            <button 
+            <button
               onClick={() => handleLogin('teacher')}
               disabled={isLoading !== ''}
               className="w-full sm:w-auto px-8 py-4 bg-indigo-600 hover:bg-indigo-500 text-white text-base font-bold rounded-xl shadow-xl shadow-indigo-600/20 transition-all hover:scale-105 flex items-center justify-center gap-2"
             >
               {isLoading === 'teacher' ? 'Signing in...' : 'Launch Teacher Dashboard'}
             </button>
-            <button 
+            <button
               onClick={() => handleLogin('student')}
               disabled={isLoading !== ''}
               className="w-full sm:w-auto px-8 py-4 bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 text-base font-bold rounded-xl shadow-lg transition-all hover:scale-105 flex items-center justify-center gap-2"
@@ -112,7 +112,7 @@ export default function LandingPage() {
             <h2 className="text-3xl md:text-4xl font-bold text-white">How It Works</h2>
             <p className="text-slate-400 max-w-2xl mx-auto">Seamless integration of advanced AI to facilitate real-time accessible learning.</p>
           </div>
-          
+
           <div className="grid md:grid-cols-3 gap-8 relative">
             {/* Connecting line for desktop */}
             <div className="hidden md:block absolute top-12 left-[15%] right-[15%] h-0.5 bg-gradient-to-r from-indigo-500/0 via-indigo-500/50 to-indigo-500/0"></div>
@@ -183,7 +183,7 @@ export default function LandingPage() {
           <p className="text-xl text-slate-300 max-w-3xl mx-auto leading-relaxed">
             Every component of this visual infrastructure was designed to prioritize accessibility. From high-contrast dark modes to native screen-reader support, the interface stays completely out of the way so learning takes center stage.
           </p>
-          <button 
+          <button
             onClick={() => handleLogin('student')}
             className="mt-8 px-8 py-4 bg-white text-indigo-950 text-base font-bold rounded-xl shadow-xl hover:bg-slate-100 transition-all hover:scale-105"
           >
