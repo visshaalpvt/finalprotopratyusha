@@ -34,7 +34,8 @@ export default function LiveClassroom() {
     roomId,
     role === 'teacher',
     userName,
-    !inLobby
+    !inLobby,
+    () => setIsWaiting(false)
   );
 
   const [transcript, setTranscript] = useState([]);
@@ -76,7 +77,6 @@ export default function LiveClassroom() {
     socket.on('transcript-history', handleHistory);
     socket.on('join-request-received', handleJoinReq);
     socket.on('waiting-list', handleWaitingList);
-    socket.on('join-approved', () => setIsWaiting(false));
     socket.on('sign-broadcast', handleSignBroadcast);
 
     return () => {
@@ -84,7 +84,6 @@ export default function LiveClassroom() {
       socket.off('transcript-history', handleHistory);
       socket.off('join-request-received', handleJoinReq);
       socket.off('waiting-list', handleWaitingList);
-      socket.off('join-approved');
       socket.off('sign-broadcast', handleSignBroadcast);
     };
   }, [socket]);

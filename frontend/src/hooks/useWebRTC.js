@@ -12,7 +12,7 @@ const getSocketUrl = () => {
 
 const SOCKET_URL = getSocketUrl();
 
-export function useWebRTC(roomId, isTeacher, userName, isJoined) {
+export function useWebRTC(roomId, isTeacher, userName, isJoined, onJoinApproved) {
   const [localStream, setLocalStream] = useState(null);
   const [remotePeers, setRemotePeers] = useState([]);
   const [socket, setSocket] = useState(null);
@@ -124,6 +124,8 @@ export function useWebRTC(roomId, isTeacher, userName, isJoined) {
 
     newSocket.on('join-approved', ({ roomId: approvedRoomId }) => {
       console.log(`[Approve] Joined room ${approvedRoomId}`);
+      if (onJoinApproved) onJoinApproved();
+
       navigator.mediaDevices.getUserMedia({ video: true, audio: true })
         .then(stream => {
           setLocalStream(stream);

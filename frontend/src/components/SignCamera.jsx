@@ -1,7 +1,8 @@
 import React, { useRef, useEffect, useState } from 'react';
 import Webcam from 'react-webcam';
-import { classifySign } from './SignClassifier';
-import { CLASSROOM_SIGNS } from '../utils/signMapping';
+import { Hands, HAND_CONNECTIONS } from "@mediapipe/hands";
+import * as cam from "@mediapipe/camera_utils";
+import { drawConnectors, drawLandmarks } from "@mediapipe/drawing_utils";
 import { classifySign } from './SignClassifier';
 import { CLASSROOM_SIGNS } from '../utils/signMapping';
 
@@ -12,6 +13,7 @@ const SignCamera = ({ onSignDetected, isEnabled, externalStream }) => {
   const [detectedSign, setDetectedSign] = useState(null);
   const [confidence, setConfidence] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (videoRef.current && externalStream) {
@@ -24,39 +26,25 @@ const SignCamera = ({ onSignDetected, isEnabled, externalStream }) => {
 
     let camera = null;
     let hands = null;
-    let initTimeout = null;
 
-    const initMediaPipe = () => {
-      // Check if CDN scripts have loaded
-      if (!window.Hands || !window.Camera || !window.drawConnectors) {
-        console.warn("MediaPipe globals not ready, retrying in 100ms...");
-        initTimeout = setTimeout(initMediaPipe, 100);
-        return;
-      }
-
-      hands = new window.Hands({
-        locateFile: (file) => {
-          return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-        },
+    try {
+      hands = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
       });
 
       hands.setOptions({
         maxNumHands: 1,
         modelComplexity: 1,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5,
+        minDetectionConfidence: 0.7,
+        minTrackingConfidence: 0.7
       });
 
       const onResults = (results) => {
-        // First result received means vision engine is ready
         if (loading) setLoading(false);
 
         const video = videoRef.current || webcamRef.current?.video;
-        if (!canvasRef.current || !video) return;
-        
-        if (!video.videoWidth) return;
+        if (!canvasRef.current || !video || !video.videoWidth) return;
 
-        // Ensure canvas matches video size
         if (canvasRef.current.width !== video.videoWidth) {
             canvasRef.current.width = video.videoWidth;
             canvasRef.current.height = video.videoHeight;
@@ -67,24 +55,22 @@ const SignCamera = ({ onSignDetected, isEnabled, externalStream }) => {
         canvasCtx.save();
         canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
         
-        // Mirror the canvas to match mirrored webcam
         canvasCtx.translate(canvasElement.width, 0);
         canvasCtx.scale(-1, 1);
 
         if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
           for (const landmarks of results.multiHandLandmarks) {
-            window.drawConnectors(canvasCtx, landmarks, window.HAND_CONNECTIONS, {
-              color: '#6366f1', // brand-500
+            drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {
+              color: '#6366f1',
               lineWidth: 4,
             });
-            window.drawLandmarks(canvasCtx, landmarks, {
+            drawLandmarks(canvasCtx, landmarks, {
               color: '#ffffff',
               fillColor: '#6366f1',
               lineWidth: 1,
               radius: 3
             });
 
-            // Classify the sign
             const classification = classifySign(landmarks);
             if (classification) {
               const signData = Object.values(CLASSROOM_SIGNS).find(s => s.id === classification.id);
@@ -101,21 +87,19 @@ const SignCamera = ({ onSignDetected, isEnabled, externalStream }) => {
 
       hands.onResults(onResults);
 
-      // Function to check if video is ready and start camera
       const startCamera = () => {
         const video = videoRef.current || webcamRef.current?.video;
         if (video) {
           if (externalStream) {
-            // If we have an external stream, we don't need the Camera helper, just process frames
             const processFrame = async () => {
                if (isEnabled && video && !video.paused && !video.ended) {
                  await hands.send({ image: video });
                }
-               if (isEnabled) requestAnimationFrame(processFrame);
+               if (isEnabled && !error) requestAnimationFrame(processFrame);
             };
             processFrame();
           } else {
-            camera = new window.Camera(video, {
+            camera = new cam.Camera(video, {
               onFrame: async () => {
                 if (video) {
                   await hands.send({ image: video });
@@ -127,103 +111,118 @@ const SignCamera = ({ onSignDetected, isEnabled, externalStream }) => {
             camera.start();
           }
         } else {
-          // Retry after a small delay if video element isn't ready yet
-          initTimeout = setTimeout(startCamera, 100);
+          setTimeout(startCamera, 100);
         }
       };
 
       startCamera();
-    };
-
-    initMediaPipe();
+      setError(null);
+    } catch (err) {
+      console.error("Hands initialization failed:", err);
+      setError("Gesture recognition unavailable");
+      setLoading(false);
+    }
 
     return () => {
-      clearTimeout(initTimeout);
       if (camera) camera.stop();
-      if (hands) hands.close();
+      if (hands && !error) {
+        try { hands.close(); } catch(e) {}
+      }
     };
-  }, [isEnabled, onSignDetected, externalStream]);
+  }, [isEnabled, onSignDetected, externalStream, error]);
 
 
   return (
     <div className="relative rounded-[2rem] overflow-hidden bg-slate-900 border-4 border-white dark:border-slate-800 shadow-2xl aspect-video group">
-      {externalStream ? (
-         <video
-           ref={videoRef}
-           autoPlay
-           playsInline
-           muted
-           className="w-full h-full object-cover mirror"
-         />
+      {error ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-red-950/90 backdrop-blur-md">
+          <div className="w-20 h-20 rounded-full bg-red-900/50 flex items-center justify-center text-3xl mb-4 text-red-500">
+            ⚠️
+          </div>
+          <p className="text-red-400 font-bold uppercase tracking-widest text-xs text-center px-4">
+            {error}
+          </p>
+        </div>
       ) : (
-        <Webcam
-          ref={webcamRef}
-          mirrored={true}
-          className="w-full h-full object-cover"
-          audio={false}
-          videoConstraints={{
-            width: 1280,
-            height: 720,
-            facingMode: "user"
-          }}
-        />
-      )}
-      <canvas
-        ref={canvasRef}
-        className="absolute top-0 left-0 w-full h-full pointer-events-none"
-      />
-      
-      {/* Overlay Gradient */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+        <>
+          {externalStream ? (
+             <video
+               ref={videoRef}
+               autoPlay
+               playsInline
+               muted
+               className="w-full h-full object-cover mirror"
+             />
+          ) : (
+            <Webcam
+              ref={webcamRef}
+              mirrored={true}
+              className="w-full h-full object-cover"
+              audio={false}
+              videoConstraints={{
+                width: 1280,
+                height: 720,
+                facingMode: "user"
+              }}
+            />
+          )}
+          <canvas
+            ref={canvasRef}
+            className="absolute top-0 left-0 w-full h-full pointer-events-none"
+          />
+          
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
 
-      {isEnabled && loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80 backdrop-blur-xl">
-          <div className="text-white flex flex-col items-center">
-            <div className="relative w-16 h-16 mb-4">
-              <div className="absolute inset-0 rounded-full border-4 border-brand-500/20"></div>
-              <div className="absolute inset-0 rounded-full border-4 border-brand-500 border-t-transparent animate-spin"></div>
+          {isEnabled && loading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80 backdrop-blur-xl">
+              <div className="text-white flex flex-col items-center">
+                <div className="relative w-16 h-16 mb-4">
+                  <div className="absolute inset-0 rounded-full border-4 border-brand-500/20"></div>
+                  <div className="absolute inset-0 rounded-full border-4 border-brand-500 border-t-transparent animate-spin"></div>
+                </div>
+                <span className="text-sm font-black uppercase tracking-[0.2em] animate-pulse">Initializing Vision Engine</span>
+              </div>
             </div>
-            <span className="text-sm font-black uppercase tracking-[0.2em] animate-pulse">Initializing Vision Engine</span>
-          </div>
-        </div>
-      )}
+          )}
 
-      {!isEnabled && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-800/90 backdrop-blur-md">
-          <div className="w-20 h-20 rounded-full bg-slate-700/50 flex items-center justify-center text-3xl mb-4 text-slate-500">
-            📷
-          </div>
-          <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Camera is Standby</p>
-        </div>
-      )}
+          {!isEnabled && !loading && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-800/90 backdrop-blur-md">
+              <div className="w-20 h-20 rounded-full bg-slate-700/50 flex items-center justify-center text-3xl mb-4 text-slate-500">
+                📷
+              </div>
+              <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Camera is Standby</p>
+            </div>
+          )}
 
-      {detectedSign && isEnabled && !loading && (
-        <div className="absolute bottom-6 left-6 right-6 animate-slide-up">
-           <div className="bg-white/10 backdrop-blur-2xl rounded-2xl p-4 border border-white/20 shadow-2xl flex items-center justify-between overflow-hidden relative">
-              <div className="absolute top-0 left-0 w-1 h-full bg-brand-500"></div>
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center text-3xl shadow-inner animate-bounce-soft">
-                  {detectedSign.icon}
-                </div>
-                <div>
-                  <h4 className="text-white text-xl font-black leading-tight">{detectedSign.label}</h4>
-                  <p className="text-brand-200 text-xs font-medium">{detectedSign.meaning}</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <p className="text-[10px] text-white/40 font-black uppercase tracking-[0.2em] mb-1">Confidence</p>
-                <div className="flex items-center gap-2">
-                   <div className="w-24 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-brand-500 transition-all duration-500 ease-out"
-                        style={{ width: `${confidence * 100}%` }}
-                      ></div>
-                   </div>
-                   <span className="text-sm font-black text-brand-400 font-mono">{(confidence * 100).toFixed(0)}%</span>
-                </div>
-              </div>
-           </div>
-        </div>
+          {detectedSign && isEnabled && !loading && !error && (
+            <div className="absolute bottom-6 left-6 right-6 animate-slide-up">
+               <div className="bg-white/10 backdrop-blur-2xl rounded-2xl p-4 border border-white/20 shadow-2xl flex items-center justify-between overflow-hidden relative">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-brand-500"></div>
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center text-3xl shadow-inner animate-bounce-soft">
+                      {detectedSign.icon}
+                    </div>
+                    <div>
+                      <h4 className="text-white text-xl font-black leading-tight">{detectedSign.label}</h4>
+                      <p className="text-brand-200 text-xs font-medium">{detectedSign.meaning}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] text-white/40 font-black uppercase tracking-[0.2em] mb-1">Confidence</p>
+                    <div className="flex items-center gap-2">
+                       <div className="w-24 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-brand-500 transition-all duration-500 ease-out"
+                            style={{ width: `${confidence * 100}%` }}
+                          ></div>
+                       </div>
+                       <span className="text-sm font-black text-brand-400 font-mono">{(confidence * 100).toFixed(0)}%</span>
+                    </div>
+                  </div>
+               </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
