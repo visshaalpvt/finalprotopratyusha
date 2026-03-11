@@ -102,6 +102,21 @@ io.on('connection', (socket) => {
     io.emit('transcript-broadcast', entry);
   });
 
+  // Live classroom: teacher speech recognition sends transcript entries with roomId
+  socket.on('transcript-entry', (entry) => {
+    // Store in session for AI summary context
+    sessionManager.addTranscript(entry.text, entry.timestamp);
+    // Broadcast to everyone (StudentDashboard + LiveClassroom participants)
+    io.emit('transcript-broadcast', entry);
+    // Also broadcast to the specific video room if sender is in one
+    for (const room of socket.rooms) {
+      if (room !== socket.id) {
+        socket.to(room).emit('transcript-broadcast', entry);
+      }
+    }
+    console.log(`[Transcript] ${entry.speaker || 'Teacher'}: "${entry.text}"`);
+  });
+
   socket.on('clear-transcript', () => {
     sessionManager.clearTranscript();
     io.emit('transcript-cleared');
