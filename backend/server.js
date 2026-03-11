@@ -207,6 +207,16 @@ io.on('connection', (socket) => {
     });
   });
 
+  socket.on('text-to-voice', ({ roomId, userName, text, timestamp }) => {
+    console.log(`[TextToVoice] ${userName}: "${text}"`);
+    socket.to(roomId).emit('text-to-voice-broadcast', {
+      userId: socket.id,
+      userName,
+      text,
+      timestamp,
+    });
+  });
+
   socket.on('reject-user', ({ roomId, studentSocketId }) => {
     if (videoRooms[roomId]) {
       videoRooms[roomId].waiting = videoRooms[roomId].waiting.filter(w => w.socketId !== studentSocketId);
