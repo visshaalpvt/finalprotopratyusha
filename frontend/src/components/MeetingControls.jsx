@@ -3,7 +3,7 @@ import { Mic, MicOff, Video, VideoOff, PhoneOff, Users, MessageSquare, LayoutGri
 import { motion } from 'framer-motion';
 import { cn } from '../lib/utils';
 
-const ControlButton = ({ onClick, active, icon: Icon, activeIcon: ActiveIcon, label, danger, activeColor = 'bg-brand-600' }) => {
+const ControlButton = ({ onClick, active, icon: Icon, activeIcon: ActiveIcon, label, danger, activeColor = 'bg-brand-600', hasNotification }) => {
   const CurrentIcon = active ? (ActiveIcon || Icon) : Icon;
   
   return (
@@ -12,7 +12,7 @@ const ControlButton = ({ onClick, active, icon: Icon, activeIcon: ActiveIcon, la
       whileTap={{ scale: 0.95 }}
       onClick={onClick}
       className={cn(
-        "control-btn",
+        "control-btn relative",
         active && activeColor,
         danger && "bg-rose-500 hover:bg-rose-600",
         !active && !danger && "bg-surface"
@@ -20,6 +20,12 @@ const ControlButton = ({ onClick, active, icon: Icon, activeIcon: ActiveIcon, la
       title={label}
     >
       <CurrentIcon className="w-5 h-5 text-white" />
+      {hasNotification && (
+        <span className="absolute top-2 right-2 flex h-3 w-3">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
+        </span>
+      )}
     </motion.button>
   );
 };
@@ -34,7 +40,8 @@ const MeetingControls = ({
   onToggleChat, 
   onToggleLayout,
   activePanel,
-  layout
+  layout,
+  hasJoinRequests
 }) => {
   return (
     <div className="fixed bottom-0 left-0 right-0 p-4 safe-bottom z-50 pointer-events-none">
@@ -71,6 +78,7 @@ const MeetingControls = ({
           active={activePanel === 'participants'} 
           icon={Users} 
           label="Participants"
+          hasNotification={hasJoinRequests}
           activeColor="bg-indigo-600"
         />
 

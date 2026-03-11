@@ -147,6 +147,14 @@ io.on('connection', (socket) => {
       }
     }
     socket.emit('room-users', usersInRoom);
+
+    // If I'm the teacher, also send me the waiting list immediately
+    if (isTeacher && videoRooms[roomId].waiting.length > 0) {
+      socket.emit('waiting-list', videoRooms[roomId].waiting.map(w => ({
+          studentId: w.socketId,
+          userName: w.name
+      })));
+    }
   });
 
   socket.on('join-request', ({ roomId, studentName }) => {

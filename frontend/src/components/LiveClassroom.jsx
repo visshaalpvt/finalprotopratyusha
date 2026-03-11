@@ -54,15 +54,21 @@ export default function LiveClassroom() {
       });
     };
 
+    const handleWaitingList = (list) => {
+      setJoinRequests(list);
+    };
+
     socket.on('transcript-broadcast', handleTranscript);
     socket.on('transcript-history', handleHistory);
     socket.on('join-request-received', handleJoinReq);
+    socket.on('waiting-list', handleWaitingList);
     socket.on('join-approved', () => setIsWaiting(false));
 
     return () => {
       socket.off('transcript-broadcast', handleTranscript);
       socket.off('transcript-history', handleHistory);
       socket.off('join-request-received', handleJoinReq);
+      socket.off('waiting-list', handleWaitingList);
       socket.off('join-approved');
     };
   }, [socket]);
@@ -198,6 +204,31 @@ export default function LiveClassroom() {
         onCopyInvite={handleCopyInvite}
         inviteCopied={inviteCopied}
       />
+
+      {/* Prominent Knock Notification for Teacher */}
+      <AnimatePresence>
+        {amITeacher && joinRequests.length > 0 && activePanel !== 'participants' && (
+          <motion.div 
+            initial={{ y: -100, opacity: 0 }}
+            animate={{ y: 20, opacity: 1 }}
+            exit={{ y: -100, opacity: 0 }}
+            className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] pointer-events-auto"
+          >
+            <button 
+              onClick={() => setActivePanel('participants')}
+              className="bg-amber-500 text-amber-950 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border-2 border-amber-400/50 hover:scale-105 transition-transform group"
+            >
+              <div className="w-10 h-10 bg-amber-600 rounded-full flex items-center justify-center animate-bounce">
+                <UsersIcon className="w-5 h-5" />
+              </div>
+              <div className="text-left">
+                <p className="font-black text-sm uppercase tracking-tight leading-none mb-1">Knock, Knock!</p>
+                <p className="text-[10px] font-bold opacity-80 uppercase tracking-wider">{joinRequests.length} student{joinRequests.length > 1 ? 's' : ''} waiting</p>
+              </div>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="flex-1 flex flex-col relative overflow-hidden">
         {/* Main Stage / Grid */}
@@ -336,9 +367,11 @@ export default function LiveClassroom() {
         onToggleLayout={() => setLayout(layout === 'grid' ? 'speaker' : 'grid')}
         activePanel={activePanel}
         layout={layout}
+        hasJoinRequests={amITeacher && joinRequests.length > 0}
       />
     </div>
   );
 }
 
 const X = ({ className }) => <div className={className}>❌</div>; // Fallback
+const UsersIcon = ({ className }) => <div className={className}>👥</div>;
