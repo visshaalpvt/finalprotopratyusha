@@ -488,6 +488,3 @@ export default function LiveClassroom() {
     </div>
   );
 }
-
-const X = ({ className }) => <div className={className}>❌</div>; // Fallback
-const UsersIcon = ({ className }) => <div className={className}>👥</div>;
