@@ -84,9 +84,9 @@ const MeetingControls = ({
 
         <ControlButton 
           onClick={onToggleChat} 
-          active={activePanel === 'chat' || activePanel === 'accessibility'} 
+          active={activePanel === 'chat'} 
           icon={MessageSquare} 
-          label="Accessibility"
+          label="Chat"
           activeColor="bg-indigo-600"
         />
 
