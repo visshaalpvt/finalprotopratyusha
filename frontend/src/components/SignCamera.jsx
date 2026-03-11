@@ -1,18 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import Webcam from 'react-webcam';
-import * as MP_HANDS from '@mediapipe/hands';
-import * as MP_CAM from '@mediapipe/camera_utils';
-import * as MP_DRAWING from '@mediapipe/drawing_utils';
-
-// Defensive constructor handling for MediaPipe in Vite/React
-// We favor window globals loaded via CDN as they are more stable
-const Hands = window.Hands || MP_HANDS.Hands || MP_HANDS.default?.Hands || MP_HANDS;
-const HAND_CONNECTIONS = window.HAND_CONNECTIONS || MP_HANDS.HAND_CONNECTIONS || MP_HANDS.default?.HAND_CONNECTIONS;
-
-// For Camera and Drawing Utils
-const cam = window.cam || MP_CAM;
-const drawConnectors = window.drawConnectors || MP_DRAWING.drawConnectors || MP_DRAWING.default?.drawConnectors || window.drawConnectors;
-const drawLandmarks = window.drawLandmarks || MP_DRAWING.drawLandmarks || MP_DRAWING.default?.drawLandmarks || window.drawLandmarks;
+import { classifySign } from './SignClassifier';
+import { CLASSROOM_SIGNS } from '../utils/signMapping';
 import { classifySign } from './SignClassifier';
 import { CLASSROOM_SIGNS } from '../utils/signMapping';
 
@@ -33,113 +22,128 @@ const SignCamera = ({ onSignDetected, isEnabled, externalStream }) => {
   useEffect(() => {
     if (!isEnabled) return;
 
-    const hands = new Hands({
-      locateFile: (file) => {
-        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-      },
-    });
-
-    hands.setOptions({
-      maxNumHands: 1,
-      modelComplexity: 1,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5,
-    });
-
     let camera = null;
+    let hands = null;
+    let initTimeout = null;
 
-    const onResults = (results) => {
-      // First result received means vision engine is ready
-      if (loading) setLoading(false);
-
-      const video = videoRef.current || webcamRef.current?.video;
-      if (!canvasRef.current || !video) return;
-      
-      if (!video.videoWidth) return;
-
-      // Ensure canvas matches video size
-      if (canvasRef.current.width !== video.videoWidth) {
-          canvasRef.current.width = video.videoWidth;
-          canvasRef.current.height = video.videoHeight;
+    const initMediaPipe = () => {
+      // Check if CDN scripts have loaded
+      if (!window.Hands || !window.Camera || !window.drawConnectors) {
+        console.warn("MediaPipe globals not ready, retrying in 100ms...");
+        initTimeout = setTimeout(initMediaPipe, 100);
+        return;
       }
 
-      const canvasElement = canvasRef.current;
-      const canvasCtx = canvasElement.getContext('2d');
-      canvasCtx.save();
-      canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-      
-      // Mirror the canvas to match mirrored webcam
-      canvasCtx.translate(canvasElement.width, 0);
-      canvasCtx.scale(-1, 1);
+      hands = new window.Hands({
+        locateFile: (file) => {
+          return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        },
+      });
 
-      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        for (const landmarks of results.multiHandLandmarks) {
-          drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {
-            color: '#6366f1', // brand-500
-            lineWidth: 4,
-          });
-          drawLandmarks(canvasCtx, landmarks, {
-            color: '#ffffff',
-            fillColor: '#6366f1',
-            lineWidth: 1,
-            radius: 3
-          });
+      hands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+      });
 
-          // Classify the sign
-          const classification = classifySign(landmarks);
-          if (classification) {
-            const signData = Object.values(CLASSROOM_SIGNS).find(s => s.id === classification.id);
-            if (signData) {
-              setDetectedSign(signData);
-              setConfidence(classification.confidence);
-              onSignDetected(signData, classification.confidence);
+      const onResults = (results) => {
+        // First result received means vision engine is ready
+        if (loading) setLoading(false);
+
+        const video = videoRef.current || webcamRef.current?.video;
+        if (!canvasRef.current || !video) return;
+        
+        if (!video.videoWidth) return;
+
+        // Ensure canvas matches video size
+        if (canvasRef.current.width !== video.videoWidth) {
+            canvasRef.current.width = video.videoWidth;
+            canvasRef.current.height = video.videoHeight;
+        }
+
+        const canvasElement = canvasRef.current;
+        const canvasCtx = canvasElement.getContext('2d');
+        canvasCtx.save();
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+        
+        // Mirror the canvas to match mirrored webcam
+        canvasCtx.translate(canvasElement.width, 0);
+        canvasCtx.scale(-1, 1);
+
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+          for (const landmarks of results.multiHandLandmarks) {
+            window.drawConnectors(canvasCtx, landmarks, window.HAND_CONNECTIONS, {
+              color: '#6366f1', // brand-500
+              lineWidth: 4,
+            });
+            window.drawLandmarks(canvasCtx, landmarks, {
+              color: '#ffffff',
+              fillColor: '#6366f1',
+              lineWidth: 1,
+              radius: 3
+            });
+
+            // Classify the sign
+            const classification = classifySign(landmarks);
+            if (classification) {
+              const signData = Object.values(CLASSROOM_SIGNS).find(s => s.id === classification.id);
+              if (signData) {
+                setDetectedSign(signData);
+                setConfidence(classification.confidence);
+                onSignDetected(signData, classification.confidence);
+              }
             }
           }
         }
-      }
-      canvasCtx.restore();
-    };
+        canvasCtx.restore();
+      };
 
-    hands.onResults(onResults);
+      hands.onResults(onResults);
 
-    // Function to check if video is ready and start camera
-    const startCamera = () => {
-      const video = videoRef.current || webcamRef.current?.video;
-      if (video) {
-        if (externalStream) {
-          // If we have an external stream, we don't need the Camera helper, just process frames
-          const processFrame = async () => {
-             if (isEnabled && video && !video.paused && !video.ended) {
-               await hands.send({ image: video });
-             }
-             if (isEnabled) requestAnimationFrame(processFrame);
-          };
-          processFrame();
+      // Function to check if video is ready and start camera
+      const startCamera = () => {
+        const video = videoRef.current || webcamRef.current?.video;
+        if (video) {
+          if (externalStream) {
+            // If we have an external stream, we don't need the Camera helper, just process frames
+            const processFrame = async () => {
+               if (isEnabled && video && !video.paused && !video.ended) {
+                 await hands.send({ image: video });
+               }
+               if (isEnabled) requestAnimationFrame(processFrame);
+            };
+            processFrame();
+          } else {
+            camera = new window.Camera(video, {
+              onFrame: async () => {
+                if (video) {
+                  await hands.send({ image: video });
+                }
+              },
+              width: 640,
+              height: 480,
+            });
+            camera.start();
+          }
         } else {
-          camera = new cam.Camera(video, {
-            onFrame: async () => {
-              if (video) {
-                await hands.send({ image: video });
-              }
-            },
-            width: 640,
-            height: 480,
-          });
-          camera.start();
+          // Retry after a small delay if video element isn't ready yet
+          initTimeout = setTimeout(startCamera, 100);
         }
-      } else {
-        // Retry after a small delay if video element isn't ready yet
-        setTimeout(startCamera, 100);
-      }
+      };
+
+      startCamera();
     };
 
-    startCamera();
+    initMediaPipe();
 
     return () => {
+      clearTimeout(initTimeout);
       if (camera) camera.stop();
-      hands.close();
+      if (hands) hands.close();
     };
   }, [isEnabled, onSignDetected, externalStream]);
+
 
   return (
     <div className="relative rounded-[2rem] overflow-hidden bg-slate-900 border-4 border-white dark:border-slate-800 shadow-2xl aspect-video group">
