@@ -1,15 +1,30 @@
 import { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 
-const SOCKET_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+const getSocketUrl = () => {
+  const envUrl = import.meta.env.VITE_BACKEND_URL;
+  // If we are on localhost but the env says Render, prioritize localhost to avoid stale config issues
+  if (window.location.hostname === 'localhost' && envUrl?.includes('onrender.com')) {
+    return 'http://localhost:3001';
+  }
+  return envUrl || 'http://localhost:3001';
+};
+
+const SOCKET_URL = getSocketUrl();
 
 export function useWebRTC(roomId, isTeacher, userName, isJoined) {
   const [localStream, setLocalStream] = useState(null);
   const [remotePeers, setRemotePeers] = useState([]);
   const [socket, setSocket] = useState(null);
   const socketRef = useRef(null);
+  const localStreamRef = useRef(null);
   const peersRef = useRef({});
   const iceCandidateQueue = useRef({});
+
+  // Sync ref with state for async handlers
+  useEffect(() => {
+    localStreamRef.current = localStream;
+  }, [localStream]);
 
   // ICE Servers for STUN
   const iceServers = {
@@ -20,23 +35,31 @@ export function useWebRTC(roomId, isTeacher, userName, isJoined) {
     ]
   };
 
+  // 1. Socket Lifecycle: Stabilize connection
   useEffect(() => {
     if (!isJoined) return;
 
-    const newSocket = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
+    console.log(`[Socket] Connecting to ${SOCKET_URL}`);
+    
+    // Explicitly allow polling first for better compatibility with proxies/Render
+    const newSocket = io(SOCKET_URL, { 
+      transports: ['polling', 'websocket'],
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000
+    });
+    
     socketRef.current = newSocket;
     setSocket(newSocket);
 
     const createPeer = (peerId, isInitiator, peerIsTeacher, peerName) => {
-      // If peer connection already exists, just return it
       if (peersRef.current[peerId]) return peersRef.current[peerId].pc;
-
       const peer = new RTCPeerConnection(iceServers);
 
-      // Add our local stream to the peer connection so others can see us
-      if (localStream) {
-        localStream.getTracks().forEach(track => {
-          peer.addTrack(track, localStream);
+      // Use the ref to get the current stream without making it a dependency
+      const currentStream = localStreamRef.current;
+      if (currentStream) {
+        currentStream.getTracks().forEach(track => {
+          peer.addTrack(track, currentStream);
         });
       }
 
@@ -51,7 +74,6 @@ export function useWebRTC(roomId, isTeacher, userName, isJoined) {
 
       peer.ontrack = (event) => {
         setRemotePeers(prev => {
-          // Only add one stream per peer
           if (prev.find(p => p.peerId === peerId)) return prev;
           return [...prev, {
             peerId,
@@ -84,12 +106,11 @@ export function useWebRTC(roomId, isTeacher, userName, isJoined) {
     };
 
     newSocket.on('connect', () => {
+      console.log('[Socket] Connected!', newSocket.id);
       if (isTeacher) {
-        // Teacher joins immediately and broadcasts
         navigator.mediaDevices.getUserMedia({ video: true, audio: true })
           .then(stream => {
             setLocalStream(stream);
-            newSocket.data = { name: userName, role: 'admin' };
             newSocket.emit('join-video-room', { roomId, isTeacher });
           })
           .catch(err => {
@@ -97,16 +118,12 @@ export function useWebRTC(roomId, isTeacher, userName, isJoined) {
             alert("Could not access camera/microphone.");
           });
       } else {
-        // Student requests to join and waits in waiting room
-        newSocket.data = { name: userName, role: 'student' };
         newSocket.emit('join-request', { roomId, studentName: userName });
       }
     });
 
     newSocket.on('join-approved', ({ roomId: approvedRoomId }) => {
       console.log(`[Approve] Joined room ${approvedRoomId}`);
-      
-      // Get local stream for student too, so they can be seen
       navigator.mediaDevices.getUserMedia({ video: true, audio: true })
         .then(stream => {
           setLocalStream(stream);
@@ -114,7 +131,6 @@ export function useWebRTC(roomId, isTeacher, userName, isJoined) {
         })
         .catch(err => {
           console.error("Failed to get local stream", err);
-          // Still join even if camera fails, just as observer
           newSocket.emit('join-video-room', { roomId: approvedRoomId, isTeacher: false });
         });
     });
@@ -125,45 +141,31 @@ export function useWebRTC(roomId, isTeacher, userName, isJoined) {
     });
 
     newSocket.on('user-connected', ({ userId, isTeacher: peerIsTeacher, name: peerName }) => {
-      // A new user joined. I will initiate the call (offer).
       createPeer(userId, true, peerIsTeacher, peerName);
     });
 
     newSocket.on('webrtc-offer', async (data) => {
-      // Received an offer, answer it
       const peer = createPeer(data.callerId, false, data.isTeacher, data.name);
       await peer.setRemoteDescription(new RTCSessionDescription(data.offer));
       const answer = await peer.createAnswer();
       await peer.setLocalDescription(answer);
       newSocket.emit('webrtc-answer', { target: data.callerId, answer });
 
-      // Process any queued ICE candidates that arrived before remote description was set
       if (iceCandidateQueue.current[data.callerId]) {
         for (const candidate of iceCandidateQueue.current[data.callerId]) {
-          try {
-            await peer.addIceCandidate(new RTCIceCandidate(candidate));
-          } catch (e) {
-            console.error("Error adding queued ice candidate", e);
-          }
+          try { await peer.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) {}
         }
         iceCandidateQueue.current[data.callerId] = [];
       }
     });
 
     newSocket.on('webrtc-answer', async (data) => {
-      // Received an answer to my offer
       const peer = peersRef.current[data.replierId]?.pc;
       if (peer) {
         await peer.setRemoteDescription(new RTCSessionDescription(data.answer));
-        
-        // Process queued candidates
         if (iceCandidateQueue.current[data.replierId]) {
           for (const candidate of iceCandidateQueue.current[data.replierId]) {
-            try {
-              await peer.addIceCandidate(new RTCIceCandidate(candidate));
-            } catch (e) {
-              console.error("Error adding queued ice candidate", e);
-            }
+            try { await peer.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) {}
           }
           iceCandidateQueue.current[data.replierId] = [];
         }
@@ -173,22 +175,14 @@ export function useWebRTC(roomId, isTeacher, userName, isJoined) {
     newSocket.on('webrtc-ice-candidate', async (data) => {
       const peerData = peersRef.current[data.senderId];
       if (peerData && peerData.pc.remoteDescription) {
-        try {
-          await peerData.pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-        } catch (e) {
-          console.error("Error adding ice candidate", e);
-        }
+        try { await peerData.pc.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch (e) {}
       } else {
-        // Queue it because RTCPeerConnection isn't ready or doesn't have remote description yet
-        if (!iceCandidateQueue.current[data.senderId]) {
-          iceCandidateQueue.current[data.senderId] = [];
-        }
+        if (!iceCandidateQueue.current[data.senderId]) iceCandidateQueue.current[data.senderId] = [];
         iceCandidateQueue.current[data.senderId].push(data.candidate);
       }
     });
 
     newSocket.on('room-users', (users) => {
-       // Only students need to initiate connections to existing users (like the teacher)
        if (!isTeacher) {
            users.forEach(user => {
                if (user.userId !== newSocket.id) {
@@ -198,7 +192,6 @@ export function useWebRTC(roomId, isTeacher, userName, isJoined) {
        }
     });
     
-    // Handle user leaving
     newSocket.on('user-disconnected', (userId) => {
        setRemotePeers(prev => prev.filter(p => p.peerId !== userId));
        if (peersRef.current[userId]) {
@@ -208,26 +201,43 @@ export function useWebRTC(roomId, isTeacher, userName, isJoined) {
     });
 
     return () => {
+      console.log('[Socket] Cleaning up...');
       newSocket.disconnect();
-      if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-      }
       Object.values(peersRef.current).forEach(p => p.pc.close());
       peersRef.current = {};
     };
-  }, [isJoined, roomId, isTeacher, userName, localStream]);
+  }, [isJoined, roomId, isTeacher, userName]); // localStream removed
+
+  // 2. Stream Lifecycle: Sync tracks when localStream changes without resetting socket
+  useEffect(() => {
+    if (!localStream) return;
+    
+    Object.values(peersRef.current).forEach(({ pc }) => {
+      if (pc.signalingState !== 'closed') {
+        localStream.getTracks().forEach(track => {
+          const senders = pc.getSenders();
+          const existingSender = senders.find(s => s.track?.kind === track.kind);
+          if (existingSender) {
+            existingSender.replaceTrack(track);
+          } else {
+            pc.addTrack(track, localStream);
+          }
+        });
+      }
+    });
+  }, [localStream]);
 
   const toggleMic = () => {
-    if (localStream) {
-      localStream.getAudioTracks().forEach(track => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach(track => {
         track.enabled = !track.enabled;
       });
     }
   };
 
   const toggleCamera = () => {
-    if (localStream) {
-      localStream.getVideoTracks().forEach(track => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getVideoTracks().forEach(track => {
         track.enabled = !track.enabled;
       });
     }

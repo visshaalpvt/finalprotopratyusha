@@ -1,9 +1,18 @@
 import React, { useRef, useEffect, useState } from 'react';
 import Webcam from 'react-webcam';
-import { Hands } from '@mediapipe/hands';
-import * as cam from '@mediapipe/camera_utils';
-import { drawConnectors, drawLandmarks } from '@mediapipe/drawing_utils';
-import { HAND_CONNECTIONS } from '@mediapipe/hands';
+import * as MP_HANDS from '@mediapipe/hands';
+import * as MP_CAM from '@mediapipe/camera_utils';
+import * as MP_DRAWING from '@mediapipe/drawing_utils';
+
+// Defensive constructor handling for MediaPipe in Vite/React
+// We favor window globals loaded via CDN as they are more stable
+const Hands = window.Hands || MP_HANDS.Hands || MP_HANDS.default?.Hands || MP_HANDS;
+const HAND_CONNECTIONS = window.HAND_CONNECTIONS || MP_HANDS.HAND_CONNECTIONS || MP_HANDS.default?.HAND_CONNECTIONS;
+
+// For Camera and Drawing Utils
+const cam = window.cam || MP_CAM;
+const drawConnectors = window.drawConnectors || MP_DRAWING.drawConnectors || MP_DRAWING.default?.drawConnectors || window.drawConnectors;
+const drawLandmarks = window.drawLandmarks || MP_DRAWING.drawLandmarks || MP_DRAWING.default?.drawLandmarks || window.drawLandmarks;
 import { classifySign } from './SignClassifier';
 import { CLASSROOM_SIGNS } from '../utils/signMapping';
 
