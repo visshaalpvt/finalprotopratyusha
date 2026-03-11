@@ -198,6 +198,15 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('sign-detected', ({ roomId, signData, confidence }) => {
+    socket.to(roomId).emit('sign-broadcast', { 
+      userId: socket.id, 
+      userName: socket.data?.name || 'User',
+      signData, 
+      confidence 
+    });
+  });
+
   socket.on('reject-user', ({ roomId, studentSocketId }) => {
     if (videoRooms[roomId]) {
       videoRooms[roomId].waiting = videoRooms[roomId].waiting.filter(w => w.socketId !== studentSocketId);

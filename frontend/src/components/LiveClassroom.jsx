@@ -3,12 +3,10 @@ import { useAuth } from './AuthContext';
 import { useWebRTC } from '../hooks/useWebRTC';
 import { VideoRenderer } from './VideoRenderer';
 import TranscriptPanel from './TranscriptPanel';
-import SignLanguageViewer from './SignLanguageViewer';
-import MeetingControls from './MeetingControls';
-import ParticipantsPanel from './ParticipantsPanel';
-import MeetingTopBar from './MeetingTopBar';
+import SignCamera from './SignCamera';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
+import { X, Users as UsersIcon, Shield, User } from 'lucide-react';
 
 export default function LiveClassroom() {
   const { user } = useAuth();
@@ -24,13 +22,12 @@ export default function LiveClassroom() {
   const [activePanel, setActivePanel] = useState(null); // 'participants' | 'chat' | 'accessibility' | null
   const [isMicMuted, setIsMicMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
+  const [showSignLanguage, setShowSignLanguage] = useState(false);
+  const [showCaptions, setShowCaptions] = useState(false);
+  const [signBroadcasts, setSignBroadcasts] = useState({}); // {userId: {sign, confidence, userName, timestamp}}
 
   // Waiting Room / Join Requests (Teacher-side)
   const [joinRequests, setJoinRequests] = useState([]);
-
-  // Accessibility State Toggles
-  const [showCaptions, setShowCaptions] = useState(true);
-  const [showSignLanguage, setShowSignLanguage] = useState(false);
 
   // WebRTC & Socket signaling
   const { localStream, remotePeers, socket, toggleMic, toggleCamera } = useWebRTC(
@@ -58,11 +55,29 @@ export default function LiveClassroom() {
       setJoinRequests(list);
     };
 
+    const handleSignBroadcast = (data) => {
+      setSignBroadcasts(prev => ({
+        ...prev,
+        [data.userId]: { ...data, timestamp: Date.now() }
+      }));
+      // Clear after 5 seconds
+      setTimeout(() => {
+        setSignBroadcasts(prev => {
+          const newState = { ...prev };
+          if (newState[data.userId]?.timestamp === data.timestamp) {
+            delete newState[data.userId];
+          }
+          return newState;
+        });
+      }, 5000);
+    };
+
     socket.on('transcript-broadcast', handleTranscript);
     socket.on('transcript-history', handleHistory);
     socket.on('join-request-received', handleJoinReq);
     socket.on('waiting-list', handleWaitingList);
     socket.on('join-approved', () => setIsWaiting(false));
+    socket.on('sign-broadcast', handleSignBroadcast);
 
     return () => {
       socket.off('transcript-broadcast', handleTranscript);
@@ -70,6 +85,7 @@ export default function LiveClassroom() {
       socket.off('join-request-received', handleJoinReq);
       socket.off('waiting-list', handleWaitingList);
       socket.off('join-approved');
+      socket.off('sign-broadcast', handleSignBroadcast);
     };
   }, [socket]);
 
@@ -110,6 +126,29 @@ export default function LiveClassroom() {
   const handleToggleCamera = () => {
     toggleCamera();
     setIsCameraOff(!isCameraOff);
+  };
+
+  const handleSignDetected = (signData, confidence) => {
+    if (socket && roomId) {
+      socket.emit('sign-detected', { roomId, signData, confidence });
+      
+      const timestamp = Date.now();
+      setSignBroadcasts(prev => ({
+        ...prev,
+        'local': { signData, confidence, timestamp }
+      }));
+
+      // Clear local feedback after 5 seconds
+      setTimeout(() => {
+        setSignBroadcasts(prev => {
+          const newState = { ...prev };
+          if (newState['local']?.timestamp === timestamp) {
+            delete newState['local'];
+          }
+          return newState;
+        });
+      }, 5000);
+    }
   };
 
   if (inLobby) {
@@ -242,12 +281,28 @@ export default function LiveClassroom() {
               <div className="flex-1 flex items-center justify-center min-h-0">
                 <div className="w-full h-full max-w-6xl">
                   {mainStream ? (
-                    <VideoRenderer
-                      stream={mainStream}
-                      isLocal={amITeacher}
-                      isTeacher={true}
-                      name={amITeacher ? userName : (teacherPeer?.name || 'Teacher')}
-                    />
+                    <div className="relative w-full h-full">
+                      <VideoRenderer
+                        stream={mainStream}
+                        isLocal={amITeacher}
+                        isTeacher={true}
+                        name={amITeacher ? userName : (teacherPeer?.name || 'Teacher')}
+                      />
+                      {/* Sign Broadcast Overlay for Teacher */}
+                      <AnimatePresence>
+                        {signBroadcasts[amITeacher ? 'local' : (teacherPeer?.peerId)] && (
+                          <motion.div 
+                            initial={{ scale: 0, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0, opacity: 0 }}
+                            className="absolute top-4 right-4 bg-indigo-600/90 backdrop-blur-xl p-3 rounded-2xl border border-white/20 shadow-2xl flex items-center gap-3"
+                          >
+                            <span className="text-2xl">{signBroadcasts[amITeacher ? 'local' : (teacherPeer?.peerId)].signData.icon}</span>
+                            <span className="text-white font-bold text-sm tracking-tight">{signBroadcasts[amITeacher ? 'local' : (teacherPeer?.peerId)].signData.label}</span>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center bg-surface rounded-2xl border border-white/5">
                       <div className="w-24 h-24 rounded-full bg-slate-800 flex items-center justify-center text-5xl mb-4 shadow-2xl animate-pulse-soft">👨‍🏫</div>
@@ -260,13 +315,35 @@ export default function LiveClassroom() {
               {/* Strip of students at bottom */}
               <div className="h-32 sm:h-40 flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
                 {!amITeacher && (
-                  <div className="w-56 flex-shrink-0">
+                  <div className="w-56 flex-shrink-0 relative group">
                     <VideoRenderer stream={localStream} isLocal={true} isTeacher={false} name={userName} />
+                    <AnimatePresence>
+                      {signBroadcasts['local'] && (
+                        <motion.div 
+                          initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0, opacity: 0 }}
+                          className="absolute top-2 right-2 bg-indigo-600/90 backdrop-blur-md p-2 rounded-xl border border-white/20 shadow-xl flex items-center gap-2"
+                        >
+                          <span className="text-xl">{signBroadcasts['local'].signData.icon}</span>
+                          <span className="text-white font-bold text-xs">{signBroadcasts['local'].signData.label}</span>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 )}
                 {students.map((peer, i) => (
-                  <div key={i} className="w-56 flex-shrink-0">
+                  <div key={i} className="w-56 flex-shrink-0 relative group">
                     <VideoRenderer stream={peer.stream} isLocal={false} isTeacher={false} name={peer.name} />
+                    <AnimatePresence>
+                      {signBroadcasts[peer.peerId] && (
+                        <motion.div 
+                          initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0, opacity: 0 }}
+                          className="absolute top-2 right-2 bg-indigo-600/90 backdrop-blur-md p-2 rounded-xl border border-white/20 shadow-xl flex items-center gap-2"
+                        >
+                          <span className="text-xl">{signBroadcasts[peer.peerId].signData.icon}</span>
+                          <span className="text-white font-bold text-xs">{signBroadcasts[peer.peerId].signData.label}</span>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 ))}
               </div>
@@ -274,22 +351,55 @@ export default function LiveClassroom() {
           ) : (
             /* Grid View */
             <div className="h-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-y-auto pr-2 custom-scrollbar">
-              <div className="aspect-video">
+              <div className="aspect-video relative group">
                 <VideoRenderer 
                   stream={mainStream} 
                   isLocal={amITeacher} 
                   isTeacher={true} 
                   name={amITeacher ? userName : (teacherPeer?.name || 'Teacher')} 
                 />
+                <AnimatePresence>
+                  {signBroadcasts[amITeacher ? 'local' : (teacherPeer?.peerId)] && (
+                    <motion.div 
+                      initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0, opacity: 0 }}
+                      className="absolute top-2 right-2 bg-indigo-600/90 backdrop-blur-md p-2 rounded-xl border border-white/20 shadow-xl flex items-center gap-2"
+                    >
+                      <span className="text-xl">{signBroadcasts[amITeacher ? 'local' : (teacherPeer?.peerId)].signData.icon}</span>
+                      <span className="text-white font-bold text-xs">{signBroadcasts[amITeacher ? 'local' : (teacherPeer?.peerId)].signData.label}</span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
               {!amITeacher && (
-                <div className="aspect-video">
+                <div className="aspect-video relative group">
                   <VideoRenderer stream={localStream} isLocal={true} isTeacher={false} name={userName} />
+                  <AnimatePresence>
+                    {signBroadcasts['local'] && (
+                      <motion.div 
+                        initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0, opacity: 0 }}
+                        className="absolute top-2 right-2 bg-indigo-600/90 backdrop-blur-md p-2 rounded-xl border border-white/20 shadow-xl flex items-center gap-2"
+                      >
+                        <span className="text-xl">{signBroadcasts['local'].signData.icon}</span>
+                        <span className="text-white font-bold text-xs">{signBroadcasts['local'].signData.label}</span>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               )}
               {students.map((peer, i) => (
-                <div key={i} className="aspect-video">
+                <div key={i} className="aspect-video relative group">
                   <VideoRenderer stream={peer.stream} isLocal={false} isTeacher={false} name={peer.name} />
+                  <AnimatePresence>
+                    {signBroadcasts[peer.peerId] && (
+                      <motion.div 
+                        initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0, opacity: 0 }}
+                        className="absolute top-2 right-2 bg-indigo-600/90 backdrop-blur-md p-2 rounded-xl border border-white/20 shadow-xl flex items-center gap-2"
+                      >
+                        <span className="text-xl">{signBroadcasts[peer.peerId].signData.icon}</span>
+                        <span className="text-white font-bold text-xs">{signBroadcasts[peer.peerId].signData.label}</span>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               ))}
             </div>
@@ -337,7 +447,14 @@ export default function LiveClassroom() {
                     {showSignLanguage ? 'ENABLED' : 'DISABLED'}
                   </button>
                 </div>
-                {showSignLanguage && <SignLanguageViewer transcript={transcript} currentLanguage={'en-US'} />}
+                {showSignLanguage && (
+                  <SignCamera 
+                    isEnabled={showSignLanguage} 
+                    onSignDetected={handleSignDetected} 
+                    externalStream={localStream}
+                  />
+                )}
+                {/* <SignLanguageViewer transcript={transcript} currentLanguage={'en-US'} /> */}
                 <TranscriptPanel transcript={transcript} fontSize="sm" />
               </div>
             </motion.div>

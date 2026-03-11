@@ -7,12 +7,19 @@ import { HAND_CONNECTIONS } from '@mediapipe/hands';
 import { classifySign } from './SignClassifier';
 import { CLASSROOM_SIGNS } from '../utils/signMapping';
 
-const SignCamera = ({ onSignDetected, isEnabled }) => {
+const SignCamera = ({ onSignDetected, isEnabled, externalStream }) => {
   const webcamRef = useRef(null);
+  const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [detectedSign, setDetectedSign] = useState(null);
   const [confidence, setConfidence] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (videoRef.current && externalStream) {
+      videoRef.current.srcObject = externalStream;
+    }
+  }, [externalStream]);
 
   useEffect(() => {
     if (!isEnabled) return;
@@ -36,9 +43,9 @@ const SignCamera = ({ onSignDetected, isEnabled }) => {
       // First result received means vision engine is ready
       if (loading) setLoading(false);
 
-      if (!canvasRef.current || !webcamRef.current?.video) return;
+      const video = videoRef.current || webcamRef.current?.video;
+      if (!canvasRef.current || !video) return;
       
-      const video = webcamRef.current.video;
       if (!video.videoWidth) return;
 
       // Ensure canvas matches video size
@@ -88,17 +95,29 @@ const SignCamera = ({ onSignDetected, isEnabled }) => {
 
     // Function to check if video is ready and start camera
     const startCamera = () => {
-      if (webcamRef.current && webcamRef.current.video) {
-        camera = new cam.Camera(webcamRef.current.video, {
-          onFrame: async () => {
-            if (webcamRef.current?.video) {
-              await hands.send({ image: webcamRef.current.video });
-            }
-          },
-          width: 640,
-          height: 480,
-        });
-        camera.start();
+      const video = videoRef.current || webcamRef.current?.video;
+      if (video) {
+        if (externalStream) {
+          // If we have an external stream, we don't need the Camera helper, just process frames
+          const processFrame = async () => {
+             if (isEnabled && video && !video.paused && !video.ended) {
+               await hands.send({ image: video });
+             }
+             if (isEnabled) requestAnimationFrame(processFrame);
+          };
+          processFrame();
+        } else {
+          camera = new cam.Camera(video, {
+            onFrame: async () => {
+              if (video) {
+                await hands.send({ image: video });
+              }
+            },
+            width: 640,
+            height: 480,
+          });
+          camera.start();
+        }
       } else {
         // Retry after a small delay if video element isn't ready yet
         setTimeout(startCamera, 100);
@@ -111,21 +130,31 @@ const SignCamera = ({ onSignDetected, isEnabled }) => {
       if (camera) camera.stop();
       hands.close();
     };
-  }, [isEnabled, onSignDetected]);
+  }, [isEnabled, onSignDetected, externalStream]);
 
   return (
     <div className="relative rounded-[2rem] overflow-hidden bg-slate-900 border-4 border-white dark:border-slate-800 shadow-2xl aspect-video group">
-      <Webcam
-        ref={webcamRef}
-        mirrored={true}
-        className="w-full h-full object-cover"
-        audio={false}
-        videoConstraints={{
-          width: 1280,
-          height: 720,
-          facingMode: "user"
-        }}
-      />
+      {externalStream ? (
+         <video
+           ref={videoRef}
+           autoPlay
+           playsInline
+           muted
+           className="w-full h-full object-cover mirror"
+         />
+      ) : (
+        <Webcam
+          ref={webcamRef}
+          mirrored={true}
+          className="w-full h-full object-cover"
+          audio={false}
+          videoConstraints={{
+            width: 1280,
+            height: 720,
+            facingMode: "user"
+          }}
+        />
+      )}
       <canvas
         ref={canvasRef}
         className="absolute top-0 left-0 w-full h-full pointer-events-none"
