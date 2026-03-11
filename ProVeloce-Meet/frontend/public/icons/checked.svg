@@ -1,0 +1,53 @@
+<svg viewBox="0 0 80 80" width="80" height="80" class="verified-badge-ui" xmlns="http://www.w3.org/2000/svg">
+  <!-- Subtle circle glow, for verified emphasis -->
+  <circle class="badge-glow" cx="40" cy="40" r="24" fill="#E6FAF5" />
+  <!-- Main badge circle with green fill -->
+  <circle class="badge-circle" cx="40" cy="40" r="20" fill="#28C76F"/>
+  <!-- Main badge stroke, animates in -->
+  <circle class="badge-border" cx="40" cy="40" r="20" fill="none" stroke="#28C76F" stroke-width="2"/>
+  <!-- Animated tick/checkmark for verified status - white checkmark -->
+  <path class="badge-tick" d="M28 40L36 48L52 32" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <style>
+    .verified-badge-ui {
+      display: block;
+      margin: 16px auto;
+      /* Entry pop for the whole badge */
+      animation: badge-pop 0.5s cubic-bezier(.5,.2,.2,1) 0.2s both;
+    }
+    @keyframes badge-pop {
+      0% { transform: scale(0.7); }
+      70% { transform: scale(1.08); }
+      100% { transform: scale(1); }
+    }
+    .badge-glow {
+      opacity: 0;
+      animation: showGlow 0.5s 0.1s ease-in forwards;
+    }
+    @keyframes showGlow {
+      to { opacity: 1; }
+    }
+    .badge-circle {
+      opacity: 0;
+      animation: showCircle 0.4s 0.2s ease-out forwards;
+    }
+    @keyframes showCircle {
+      to { opacity: 1; }
+    }
+    .badge-border {
+      stroke-dasharray: 126;
+      stroke-dashoffset: 126;
+      animation: drawBorder 0.6s 0.3s cubic-bezier(.68,-0.6,.32,1.6) forwards;
+    }
+    @keyframes drawBorder {
+      to { stroke-dashoffset: 0; }
+    }
+    .badge-tick {
+      stroke-dasharray: 32;
+      stroke-dashoffset: 32;
+      animation: drawTick 0.5s 0.7s cubic-bezier(.4,0,.2,1) forwards;
+    }
+    @keyframes drawTick {
+      to { stroke-dashoffset: 0; }
+    }
+  </style>
+</svg>
